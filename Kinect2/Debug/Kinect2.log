@@ -1,0 +1,20 @@
+﻿Build started 7/1/2016 3:36:15 PM.
+     1>Project "C:\microgesture project\Visual studio\Kinect2\Kinect2\Kinect2.vcxproj" on node 2 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\CL.exe /c /I"C:\Program Files\Microsoft SDKs\Kinect\v2.0_1409\inc" /I"C:\microgesture project\opencv\build\include" /ZI /nologo /W3 /WX- /sdl /Od /Oy- /D WIN32 /D _DEBUG /D _CONSOLE /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Yu"stdafx.h" /Fp"Debug\Kinect2.pch" /Fo"Debug\\" /Fd"Debug\vc110.pdb" /Gd /TP /analyze- /errorReport:prompt Kinect2.cpp
+         Kinect2.cpp
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(31): warning C4091: 'typedef ' : ignored on left of 'BodyInfoStructs' when no variable is declared
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(87): warning C4800: 'IMultiSourceFrameReader *' : forcing value to bool 'true' or 'false' (performance warning)
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(161): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(162): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(186): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+     1>c:\microgesture project\visual studio\kinect2\kinect2\kinect2.cpp(187): warning C4244: '=' : conversion from 'int' to 'float', possible loss of data
+       Link:
+         C:\Program Files (x86)\Microsoft Visual Studio 11.0\VC\bin\link.exe /ERRORREPORT:PROMPT /OUT:"C:\microgesture project\Visual studio\Kinect2\Debug\Kinect2.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Program Files\Microsoft SDKs\Kinect\v2.0_1409\Lib\x86" /LIBPATH:"C:\microgesture project\opencv\build\x86\vc12\lib" "C:\Program Files\Microsoft SDKs\Kinect\v2.0_1409\Lib\x86\Kinect20.lib" opencv_calib3d2411d.lib opencv_contrib2411d.lib opencv_core2411d.lib opencv_features2d2411d.lib opencv_flann2411d.lib opencv_gpu2411d.lib opencv_highgui2411d.lib opencv_imgproc2411d.lib opencv_legacy2411d.lib opencv_ml2411d.lib opencv_nonfree2411d.lib opencv_objdetect2411d.lib opencv_ocl2411d.lib opencv_photo2411d.lib opencv_stitching2411d.lib opencv_superres2411d.lib opencv_ts2411d.lib opencv_video2411d.lib opencv_videostab2411d.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\microgesture project\Visual studio\Kinect2\Debug\Kinect2.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\microgesture project\Visual studio\Kinect2\Debug\Kinect2.lib" /MACHINE:X86 Debug\Kinect2.obj
+         Debug\stdafx.obj
+         Kinect2.vcxproj -> C:\microgesture project\Visual studio\Kinect2\Debug\Kinect2.exe
+     1>Done Building Project "C:\microgesture project\Visual studio\Kinect2\Kinect2\Kinect2.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:06.45
