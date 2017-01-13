@@ -1,8 +1,8 @@
-// Kinect2.cpp : Defines the entry point for the console application.
-//
-
-
 #include "stdafx.h"
+#include <omp.h>
+#include <time.h> 
+#include <stdio.h>
+#include <tchar.h>
 #include <iostream>
 #include <Windows.h>
 #include <kinect.h>
@@ -15,204 +15,31 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string>
-
 #include <iterator>
 #include <fstream>
 #include <sstream>
 #include <vector>
-using namespace std;
+#include <mfapi.h>
+#include <mfidl.h>
+#include <Mfreadwrite.h>
+#include <mferror.h>
+
+
+#include <Strsafe.h>
+
 using namespace cv;
 
+using namespace std;
+int yuy2ArraySize = 1920 * 1080 * 2;
+int rgbArraySize = 1920 * 1080 * 4;
+int colorPixNum = 1920 * 1080;
 
-typedef struct BodyInfoStructs
-{
-	Mat bodyInfoMat;
-	float skeletonInfo[9 * JointType_Count];
+CvScalar skeletonColor = cvScalar(100.0, 100.0, 0.0);
+typedef struct fileName {
+	int time;
+	int idx;
+	int flag;
 };
-
-
-#define CHANNEL 4
-int desiredColorFrameHeight = 270;
-int desiredColorFrameWidth = 480;
-
-UINT16 *depthFrameBuffer;
-
-Mat drawAperson(CvPoint *jointsPoints, CvScalar skeletonColor, int skeletonThickness, Mat tmpSkeletonMat);
-
-
-int bodyFrameHeight = 1080;
-int bodyFrameWidth = 1920;  
-
-int depthFrameHeight = 1080;
-int depthFrameWidth = 1920;
-
-int colorFrameHeight = 1080;
-int colorFrameWidth = 1920;
-
-
-int bodyIndexFrameHeight = 1080;
-int bodyIndexFrameWidth = 1920;
-
-UINT8 *colorFrameBuffer = new UINT8[colorFrameHeight*colorFrameWidth*CHANNEL];
-RGBQUAD* depthFrameRGBXMat = new RGBQUAD[depthFrameWidth * depthFrameHeight];
-RGBQUAD* bodyIndexFrameRGBXMat = new RGBQUAD[bodyIndexFrameWidth * bodyIndexFrameHeight];
-
-
-
-IKinectSensor *kinectSensor = nullptr;
-IMultiSourceFrame * multiSourceFrame = nullptr;
-IMultiSourceFrameReader * multiSourceFrameReader = nullptr;
-ICoordinateMapper* multisourceCoordinateMapper;
-
-string DESTINATIONPATH = "C:\\Users\\appl\\Desktop\\SampleOutput";
-
-
-
-
-bool InitializingKinect() {
-
-	if (FAILED(GetDefaultKinectSensor(&kinectSensor))) {
-		return false;
-	}
-
-	if (kinectSensor) {
-		kinectSensor->get_CoordinateMapper(&multisourceCoordinateMapper);
-
-		kinectSensor->Open();
-		kinectSensor->OpenMultiSourceFrameReader(FrameSourceTypes::FrameSourceTypes_Depth |
-			FrameSourceTypes::FrameSourceTypes_Color |
-			FrameSourceTypes::FrameSourceTypes_Body |
-			FrameSourceTypes::FrameSourceTypes_BodyIndex,
-			&multiSourceFrameReader);
-		return multiSourceFrameReader;
-	}
-	else {
-		return false;
-	}
-}
-
-BOOLEAN tracked;
-
-
-BodyInfoStructs GetBodyFrame(IMultiSourceFrame *multiSourceFrame, int mappingDestFlag) {
-
-	IBodyFrame* bodyFrame = nullptr;
-	IBodyFrameReference* bodyFrameReference = nullptr;
-
-	Mat resultMat;
-	BodyInfoStructs bodyInfo;
-	for (int i =0; i< 9 * JointType_Count; i++)
-		bodyInfo.skeletonInfo[i] = 0;
-	//if (mappingDestFlag == 1)
-		//resultMat = Mat::zeros(colorFrameHeight, colorFrameWidth, CV_8UC4);
-	//if (mappingDestFlag == 2)
-		//resultMat = Mat::zeros(depthFrameHeight, depthFrameWidth, CV_8UC4);
-	resultMat = Mat::zeros(0, 0, CV_8UC4);
-	if (SUCCEEDED(multiSourceFrame->get_BodyFrameReference(&bodyFrameReference))) {
-		if (SUCCEEDED(bodyFrameReference->AcquireFrame(&bodyFrame))) {
-
-			IBody* bodies[BODY_COUNT] = { 0 };
-
-			if (SUCCEEDED(bodyFrame->GetAndRefreshBodyData(BODY_COUNT, bodies))) {
-
-				IBody* body;
-
-
-				//Currently Just get one body
-				for (int i = 0; i < BODY_COUNT; i++) {
-					body = bodies[i];
-					Joint joints[JointType_Count];
-					JointOrientation jointsOrientations[JointType_Count];
-					UINT colorStep = (i / 3 + 1) << 6;
-					UINT colorMask = 1 << (i % 3);
-					CvScalar skeletonColor = cvScalar((float)(((colorMask) & 1) * colorStep),
-						(float)((((colorMask) & 2) >> 1) * colorStep),
-						(float)((((colorMask) & 4) >> 2) * colorStep));
-
-					if (body) {
-						BOOLEAN bodyTracked = false;
-						CvPoint jointsPoints[JointType_Count] = { cvPoint(-1,-1) };
-						if (SUCCEEDED(body->get_IsTracked(&bodyTracked))) {
-
-							// Both of joints position and orientations should be gotten. 
-
-							if (bodyTracked) {
-								if (SUCCEEDED(body->GetJoints(JointType_Count, joints))) {
-									if (mappingDestFlag == 1) {
-										ColorSpacePoint tmpColorSpacePoint;
-
-										for (int i = 0; i < JointType_Count; i++) {
-											if (joints[i].TrackingState > 0) {
-
-												bodyInfo.skeletonInfo[0 + 9 * i] = joints[i].Position.X;
-												bodyInfo.skeletonInfo[1 + 9 * i] = joints[i].Position.Y;
-												bodyInfo.skeletonInfo[2 + 9 * i] = joints[i].Position.Z;
-
-												if (SUCCEEDED(body->GetJointOrientations(JointType_Count, jointsOrientations))) {
-													bodyInfo.skeletonInfo[3 + 9 * i] = jointsOrientations[i].Orientation.x;
-													bodyInfo.skeletonInfo[4 + 9 * i] = jointsOrientations[i].Orientation.y;
-													bodyInfo.skeletonInfo[5 + 9 * i] = jointsOrientations[i].Orientation.z;
-													bodyInfo.skeletonInfo[6 + 9 * i] = jointsOrientations[i].Orientation.w;
-												}
-
-												if (SUCCEEDED(multisourceCoordinateMapper->MapCameraPointToColorSpace(joints[i].Position, &tmpColorSpacePoint))) {
-													jointsPoints[i].x = (int)tmpColorSpacePoint.X;
-													jointsPoints[i].y = (int)tmpColorSpacePoint.Y;
-													bodyInfo.skeletonInfo[8] = jointsPoints[i].y;
-													bodyInfo.skeletonInfo[7] = jointsPoints[i].x;
-												}
-											}
-										}
-									}
-
-									if (mappingDestFlag == 2) {
-
-										DepthSpacePoint tmpDepthSpacePoint;
-
-										for (int i = 0; i < JointType_Count; i++) {
-											if (joints[i].TrackingState > 0) {
-
-												bodyInfo.skeletonInfo[0 + 9 * i] = joints[i].Position.X;
-												bodyInfo.skeletonInfo[1 + 9 * i] = joints[i].Position.Y;
-												bodyInfo.skeletonInfo[2 + 9 * i] = joints[i].Position.Z;
-												if (SUCCEEDED(body->GetJointOrientations(JointType_Count, jointsOrientations))) {
-													bodyInfo.skeletonInfo[3 + 9 * i] = jointsOrientations[i].Orientation.x;
-													bodyInfo.skeletonInfo[4 + 9 * i] = jointsOrientations[i].Orientation.y;
-													bodyInfo.skeletonInfo[5 + 9 * i] = jointsOrientations[i].Orientation.z;
-													bodyInfo.skeletonInfo[6 + 9 * i] = jointsOrientations[i].Orientation.w;
-												}
-
-												if (SUCCEEDED(multisourceCoordinateMapper->MapCameraPointToDepthSpace(joints[i].Position, &tmpDepthSpacePoint))) {
-													bodyInfo.skeletonInfo[8 + 9 * i] = jointsPoints[i].x = (int)tmpDepthSpacePoint.X;
-													bodyInfo.skeletonInfo[7 + 9 * i] = jointsPoints[i].y = (int)tmpDepthSpacePoint.Y;
-												}
-											}
-										}
-									}
-
-								}
-								if (mappingDestFlag == 1)
-									resultMat = Mat::zeros(colorFrameHeight, colorFrameWidth, CV_8UC4);
-								if (mappingDestFlag == 2)
-									resultMat = Mat::zeros(depthFrameHeight, depthFrameWidth, CV_8UC4);
-								resultMat = drawAperson(jointsPoints, skeletonColor, 10, resultMat);
-								break;
-								body->Release();
-							}
-						}
-					}
-					body->Release();
-				}
-			}
-			if (bodyFrame) bodyFrame->Release();
-		}
-		if (bodyFrameReference) bodyFrameReference->Release();
-	}
-	bodyInfo.bodyInfoMat = resultMat;
-	return bodyInfo;
-}
-
-
 
 
 Mat drawAperson(CvPoint *jointsPoints, CvScalar skeletonColor, int skeletonThickness, Mat tmpSkeletonMat) {
@@ -318,339 +145,343 @@ Mat drawAperson(CvPoint *jointsPoints, CvScalar skeletonColor, int skeletonThick
 
 }
 
-
-Mat GetBodyIndexFrame(IMultiSourceFrame *multiSourceFrame) {
-
-
-	IBodyIndexFrame *bodyIndexFrame = nullptr;
-	IBodyIndexFrameReference *bodyIndexFrameReference = nullptr;
-	IFrameDescription *bodyIndexFrameDescription = nullptr;
-	BYTE *bodyIndexFrameBuffer = nullptr;
-	UINT bodyIndexFrameBufferSize = 0;
-
-	Mat resultMat = Mat::zeros(0, 0, CV_16UC1);
+vector<string> TraverseDirectory(wchar_t Dir[MAX_PATH], string fileList)
+{
+	vector<string> fileNames;
+	WIN32_FIND_DATA FindFileData;
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	wchar_t DirSpec[MAX_PATH];                  //????????????  
+	DWORD dwError;
+	StringCchCopy(DirSpec, MAX_PATH, Dir);
+	StringCchCat(DirSpec, MAX_PATH, TEXT("\\*"));   //??????????????\*  
 
 
-	if (SUCCEEDED(multiSourceFrame->get_BodyIndexFrameReference(&bodyIndexFrameReference))) {
 
-		if (SUCCEEDED(bodyIndexFrameReference->AcquireFrame(&bodyIndexFrame))) {
+	hFind = FindFirstFile(DirSpec, &FindFileData);          //????????????  
 
-
-			if (SUCCEEDED(bodyIndexFrame->get_FrameDescription(&bodyIndexFrameDescription))) {
-				if (SUCCEEDED(bodyIndexFrameDescription->get_Height(&bodyIndexFrameHeight)) &&
-					SUCCEEDED(bodyIndexFrameDescription->get_Width(&bodyIndexFrameWidth))) {
-
-
-					if (SUCCEEDED(bodyIndexFrame->AccessUnderlyingBuffer(&bodyIndexFrameBufferSize, &bodyIndexFrameBuffer))) {
-
-						RGBQUAD * bodyIndexFrameRGBXPointer = bodyIndexFrameRGBXMat;
-
-						for (UINT i = 0; i < bodyIndexFrameBufferSize; i++) {
-							bodyIndexFrameRGBXPointer->rgbRed = (*bodyIndexFrameBuffer) & 0x01 ? 0x00 : 0xFF;
-							bodyIndexFrameRGBXPointer->rgbGreen = (*bodyIndexFrameBuffer) & 0x02 ? 0x00 : 0xFF;
-							bodyIndexFrameRGBXPointer->rgbBlue = (*bodyIndexFrameBuffer) & 0x04 ? 0x00 : 0xFF;
-							bodyIndexFrameRGBXPointer->rgbReserved = 0XFF;
-							bodyIndexFrameRGBXPointer++;
-							bodyIndexFrameBuffer++;
-						}
-						Mat bodyIndexFrameMat(bodyIndexFrameHeight, bodyIndexFrameWidth, CV_8UC4, bodyIndexFrameRGBXMat);
-
-						resultMat = bodyIndexFrameMat;
-
-					}
-				}
-				if (bodyIndexFrameDescription) bodyIndexFrameDescription->Release();
-			}
-			if (bodyIndexFrame) bodyIndexFrame->Release();
-		}
-		if (bodyIndexFrameReference) bodyIndexFrameReference->Release();
+	if (hFind == INVALID_HANDLE_VALUE)                               //??hFind??????,??????  
+	{
+		FindClose(hFind);
 	}
-	return resultMat;
-
-}
-
-
-Mat GetDepthFrame(IMultiSourceFrame *multiSourceFrame) {
-
-	IDepthFrame *depthFrame = nullptr;
-	IDepthFrameReference *depthFrameReference = nullptr;
-	IFrameDescription *depthFrameDescription = nullptr;
-	Mat resultMat = Mat::zeros(0, 0, CV_16UC1);
-
-	if (SUCCEEDED(multiSourceFrame->get_DepthFrameReference(&depthFrameReference))) {
-		if (SUCCEEDED(depthFrameReference->AcquireFrame(&depthFrame))) {
-
-			UINT16 *depthFrameBuffer = NULL;
-			UINT depthFrameBufferSize;
-
-			if (SUCCEEDED(depthFrame->get_FrameDescription(&depthFrameDescription))) {
-				USHORT depthFrameMaxReliableDistance;
-				USHORT depthFrameMinReliableDistance;
-
-				depthFrame->get_DepthMaxReliableDistance(&depthFrameMaxReliableDistance);
-				depthFrame->get_DepthMinReliableDistance(&depthFrameMinReliableDistance);
-
-				if (SUCCEEDED(depthFrameDescription->get_Height(&depthFrameHeight)) &&
-					SUCCEEDED(depthFrameDescription->get_Width(&depthFrameWidth))) {
-
-					// IF FRAME SIZE SETTED, GET THE DATA
-					if (SUCCEEDED(depthFrame->AccessUnderlyingBuffer(&depthFrameBufferSize, &depthFrameBuffer))) {
-
-
-						RGBQUAD* depthFrameRGBXPointer = depthFrameRGBXMat;
-						const UINT16* depthFrameBufferEnd = depthFrameBuffer + (depthFrameWidth * depthFrameHeight);
-
-						while (depthFrameBuffer < depthFrameBufferEnd) {
-							USHORT depth = *depthFrameBuffer;
-
-							if (depth < 0) {
-								depthFrameRGBXPointer->rgbRed = 0xFF;
-								depthFrameRGBXPointer->rgbGreen = 0;
-								depthFrameRGBXPointer->rgbBlue = 0;
-								depthFrameRGBXPointer->rgbReserved = 0xFF;
-							}
-							else if (depth < depthFrameMinReliableDistance) {
-								depthFrameRGBXPointer->rgbRed = 0;
-								depthFrameRGBXPointer->rgbGreen = depth & 0x7F + 0x80;
-								depthFrameRGBXPointer->rgbBlue = 0;
-								depthFrameRGBXPointer->rgbReserved = 0xFF;
-							}
-							else if (depth < depthFrameMaxReliableDistance) {
-								depthFrameRGBXPointer->rgbRed = depth & 0xFF;
-								depthFrameRGBXPointer->rgbGreen = depthFrameRGBXPointer->rgbRed;
-								depthFrameRGBXPointer->rgbBlue = depthFrameRGBXPointer->rgbRed;
-								depthFrameRGBXPointer->rgbReserved = 0xFF;
-							}
-							else {
-								depthFrameRGBXPointer->rgbRed = 0;
-								depthFrameRGBXPointer->rgbGreen = 0;
-								depthFrameRGBXPointer->rgbBlue = depth & 0x7F + 0x80;
-								depthFrameRGBXPointer->rgbReserved = 0xFF;
-							}
-							++depthFrameRGBXPointer;
-							++depthFrameBuffer;
-						}
-
-						Mat depthFrameMat(depthFrameHeight, depthFrameWidth, CV_8UC4, depthFrameRGBXMat);
-						resultMat = depthFrameMat;
-					}
-				}
-
-				if (depthFrameDescription) depthFrameDescription->Release();
-			}
-
-			if (depthFrame) depthFrame->Release();
-
-		}
-
-		if (depthFrameReference) depthFrameReference->Release();
-	}
-
-	return resultMat;
-}
-
-Mat GetColorFrame(IMultiSourceFrame *multiSourceFrame) {
-
-	IColorFrame *colorFrame = nullptr;
-	IColorFrameReference *colorFrameReference = nullptr;
-	IFrameDescription *colorFrameDescription = nullptr;
-	Mat resultMat = Mat::zeros(0, 0, CV_16UC1);
-
-	if (SUCCEEDED(multiSourceFrame->get_ColorFrameReference(&colorFrameReference))) {
-		if (SUCCEEDED(colorFrameReference->AcquireFrame(&colorFrame))) {
-
-			if (SUCCEEDED(colorFrame->get_FrameDescription(&colorFrameDescription))) {
-
-				if (SUCCEEDED(colorFrameDescription->get_Height(&colorFrameHeight)) &&
-					SUCCEEDED(colorFrameDescription->get_Width(&colorFrameWidth))) {
-
-
-					if (SUCCEEDED(colorFrame->CopyConvertedFrameDataToArray(colorFrameHeight * colorFrameWidth * CHANNEL,
-						colorFrameBuffer,
-						ColorImageFormat::ColorImageFormat_Bgra))) {
-						Mat colorFrameMat = Mat(colorFrameHeight, colorFrameWidth, CV_8UC4, colorFrameBuffer);
-
-						resultMat = Mat::zeros(desiredColorFrameHeight, desiredColorFrameWidth, CV_8UC4);
-
-						resize(colorFrameMat, resultMat, resultMat.size(), 0, 0, INTER_LINEAR);
-
-					}
-
-				}
-
-				if (colorFrameDescription) colorFrameDescription->Release();
-			}
-
-			if (colorFrame) colorFrame->Release();
-		}
-
-		if (colorFrameReference) colorFrameReference->Release();
-	}
-
-	return resultMat;
-}
-
-
-
-int main() {
-
-	int skeletonMapingMode = 2;
-	bool initializingStatus = InitializingKinect();
-	if (initializingStatus) {
-
-		string sampleNum;
-		cout << "put sample number here (please include all the zeros):" << endl;
-		cin >> sampleNum;
-		string path = DESTINATIONPATH + "\\Sample" + sampleNum;
-		_mkdir(path.c_str());
-		string colorPath = path + "\\Sample" + sampleNum + "_color.avi";
-		string depthPath = path + "\\Sample" + sampleNum + "_depth.avi";
-		string dataPath = path + "\\Sample" + sampleNum + "_data.csv";
-		string skeletonPath = path + "\\Sample" + sampleNum + "_skeleton.csv";
-		string userPath = path + "\\Sample" + sampleNum + "_user.avi";
-		string skeletonFPath = path + "\\Sample" + sampleNum + "_skeleton.avi";
-
-		Mat depthFrameMat = Mat::zeros(0, 0, CV_16UC1);
-		Mat colorFrameMat = Mat::zeros(0, 0, CV_16UC1);
-		Mat maskFrameMat = Mat::zeros(0, 0, CV_16UC1);
-		BodyInfoStructs bodyInfo;
-		bodyInfo.bodyInfoMat = Mat::zeros(0, 0, CV_16UC1);
-
-		while (!(!depthFrameMat.empty() && !maskFrameMat.empty() && !colorFrameMat.empty() && !bodyInfo.bodyInfoMat.empty())) {
-
-			//check if bodyinfo is empty
-			if (SUCCEEDED(multiSourceFrameReader->AcquireLatestFrame(&multiSourceFrame))) {
-				depthFrameMat = GetDepthFrame(multiSourceFrame);
-				maskFrameMat = GetBodyIndexFrame(multiSourceFrame);
-				colorFrameMat = GetColorFrame(multiSourceFrame);
-				bodyInfo = GetBodyFrame(multiSourceFrame, skeletonMapingMode);
-			}
-			if (multiSourceFrame) {
-				multiSourceFrame->Release();
-			}
-		}
-
-
-
-		Size colorFrameSize(desiredColorFrameWidth, desiredColorFrameHeight);
-		Size depthFrameSize(depthFrameWidth, depthFrameHeight);
-		Size maskFrameSize(bodyIndexFrameWidth, bodyIndexFrameHeight);
-		Size skeletonFrameSize;
-
-		if (skeletonMapingMode == 1)
-			skeletonFrameSize = colorFrameSize;
-		if (skeletonMapingMode == 2)
-			skeletonFrameSize = depthFrameSize;
-
-
-		//int fourcc = CV_FOURCC('X','V','I','D');
-		int fourcc = -1;
-		VideoWriter oVideoWriter(colorPath.c_str(), fourcc, 20, colorFrameSize, true);
-		VideoWriter dVideoWriter(depthPath.c_str(), fourcc, 20, depthFrameSize, true);
-		VideoWriter uVideoWriter(userPath.c_str(), fourcc, 20, maskFrameSize, true);
-		VideoWriter sVideoWriter(skeletonFPath.c_str(), fourcc, 20, skeletonFrameSize, true);
-
-
-		ofstream csvFile(skeletonPath.c_str());
-
-		namedWindow("depth image", CV_WINDOW_AUTOSIZE);
-		namedWindow("color image", CV_WINDOW_AUTOSIZE);
-		namedWindow("mask image", CV_WINDOW_AUTOSIZE);
-		namedWindow("skeleton image", CV_WINDOW_AUTOSIZE);
-
-		bool r = false;
-
-		if (!oVideoWriter.isOpened() || !dVideoWriter.isOpened() || !uVideoWriter.isOpened() || !sVideoWriter.isOpened())
+	else
+	{
+		char ch[260];
+		char DefChar = ' ';
+		string sss;
+		ofstream csvFile(fileList.c_str());
+		while (FindNextFile(hFind, &FindFileData) != 0)                            //???????????  
 		{
-			cout << "!!! Output video could not be opened" << std::endl;
-			return -1;
-		}
-		else cout << "video opened successfully" << endl << "use r-key to record" << endl;
 
-		while (1) {
-			if (SUCCEEDED(multiSourceFrameReader->AcquireLatestFrame(&multiSourceFrame))) {
+			if ((FindFileData.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) == 0)    //???????  
+			{
 
-				depthFrameMat = GetDepthFrame(multiSourceFrame);
-				maskFrameMat = GetBodyIndexFrame(multiSourceFrame);
-				colorFrameMat = GetColorFrame(multiSourceFrame);
-				bodyInfo = GetBodyFrame(multiSourceFrame, skeletonMapingMode);
-
-				if (!depthFrameMat.empty() && !maskFrameMat.empty() && !colorFrameMat.empty() && !bodyInfo.bodyInfoMat.empty()) {
-					if (r == true) {
-						oVideoWriter.write(colorFrameMat);
-						dVideoWriter.write(depthFrameMat);
-						uVideoWriter.write(maskFrameMat);
-						sVideoWriter.write(bodyInfo.bodyInfoMat);
-
-						for (int i = 0; i < JointType_Count - 1; i++) {
-							csvFile
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 0]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 1]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 2]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 3]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 4]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 5]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 6]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 7]) << ","
-								<< to_string(bodyInfo.skeletonInfo[9 * i + 8]) << ",";
-						}
-						csvFile
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 0]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 1]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 2]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 3]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 4]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 5]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 6]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 7]) << ","
-							<< to_string(bodyInfo.skeletonInfo[9 * (JointType_Count - 1) + 8]) << endl;
-					}
-
-					int c = cvWaitKey(1);
-					if (c == 27 || c == 'q' || c == 'Q')
-						break;
-					if (c == 'r' || c == 'R') {
-						r = true;
-						cout << "recoridng" << endl << "use s-key to stop" << endl;
-					}
-					if (c == 's' || c == 'S') {
-						r = false;
-						cout << "stoped" << endl;
-					}
-
-					//depthFrameMat = depthFrameMat + bodyInfo.bodyInfoMat;
-					imshow("depth image", depthFrameMat);
-					imshow("mask image", maskFrameMat);
-					imshow("color image", colorFrameMat);
-					imshow("skeleton image", bodyInfo.bodyInfoMat);
-					c = waitKey(1);
+				if (WideCharToMultiByte(CP_ACP, 0, FindFileData.cFileName, -1, ch, 260, &DefChar, NULL) == 0) {
+					cout << "error on handling wchat to string" << endl;
+					system("pause");
 				}
-			}
-			if (multiSourceFrame) {
-				multiSourceFrame->Release();
+				sss = string(ch);
+				fileNames.push_back(sss);
+				memset(&ch, 0, sizeof(ch));
+				csvFile << sss << endl;
+
+				wcout << Dir << "\\" << FindFileData.cFileName << endl;            //??????  
 			}
 		}
-		oVideoWriter.release();
-		dVideoWriter.release();
-		uVideoWriter.release();
-		sVideoWriter.release();
-		/*cvReleaseImageHeader(&depth);
-		cvReleaseImageHeader(&color);
-		cvReleaseImage(&skeleton);*/
-		cvDestroyWindow("depth image");
-		cvDestroyWindow("color image");
-		cvDestroyWindow("mask image");
-		cvDestroyWindow("skeleton image");
+		FindClose(hFind);
 
-
-		//NuiShutdown();
-		string colorPathNew = path + "\\Sample" + sampleNum + "_color.mp4";
-		string depthPathNew = path + "\\Sample" + sampleNum + "_depth.mp4";
-		string userPathNew = path + "\\Sample" + sampleNum + "_user.mp4";
-		string skeletonFPathNew = path + "\\Sample" + sampleNum + "_skeleton.mp4";
-		rename(colorPath.c_str(), colorPathNew.c_str());
-		rename(depthPath.c_str(), depthPathNew.c_str());
-		rename(userPath.c_str(), userPathNew.c_str());
-		rename(skeletonFPath.c_str(), skeletonFPathNew.c_str());
+		csvFile.flush();
+		csvFile.close();
 	}
+	return fileNames;
+
+}
+
+
+BYTE ClipToByte(int n) {
+	n &= -(n >= 0);
+	return n | ((255 - n) >> 31);
+
+}
+
+
+void convertingYUYV2RGB(BYTE * yuy2, BYTE * rgb) {
+	int yuy2Ite = 0;
+	int rgbIte = 0;
+
+	int Y1 = 0;
+	int U = 0;
+	int Y2 = 0;
+	int V = 0;
+
+	for (int i = 0; i < colorPixNum / 2; i++) {
+
+		int _Y0 = yuy2[(i << 2) + 0] - 16;
+		int _U = yuy2[(i << 2) + 1] - 128;
+		int _Y1 = yuy2[(i << 2) + 2] - 16;
+		int _V = yuy2[(i << 2) + 3] - 128;
+
+		byte _R = ClipToByte((298 * _Y0 + 409 * _V + 128) >> 8);
+		byte _G = ClipToByte((298 * _Y0 - 100 * _U - 208 * _V + 128) >> 8);
+		byte _B = ClipToByte((298 * _Y0 + 516 * _U + 128) >> 8);
+
+		rgb[(i * 6) + 0] = _B;
+		rgb[(i * 6) + 1] = _G;
+		rgb[(i * 6) + 2] = _R;
+		//_OutputImage[(_Index << 3) + 3] = 0xFF; // A
+
+		_R = ClipToByte((298 * _Y1 + 409 * _V + 128) >> 8);
+		_G = ClipToByte((298 * _Y1 - 100 * _U - 208 * _V + 128) >> 8);
+		_B = ClipToByte((298 * _Y1 + 516 * _U + 128) >> 8);
+
+		rgb[(i * 6) + 3] = _B;
+		rgb[(i * 6) + 4] = _G;
+		rgb[(i * 6) + 5] = _R;
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+int main()
+{
+	string dirPath = "C:\\Users\\HenglinShi\\Desktop\\SampleOutPut\\GFHHTFGHG\\";
+
+	int slashPos = 0;
+	int dotPos = 0;
+	string tmpFileName = "";
+	fileName mFileName;
+	mFileName.time = -1;
+	mFileName.idx = -1;
+
+	string tmpTime = "";
+	string tmpIdx = "";
+
+	vector<string> fileNames = TraverseDirectory(L"C:\\Users\\HenglinShi\\Desktop\\SampleOutPut\\GFHHTFGHG\\depth", "C:\\Users\\HenglinShi\\Desktop\\SampleOutPut\\GFHHTFGHG\\fileList.csv");
+	vector<fileName> fileNameStructs;
+
+
+	for (int i = 0; i < fileNames.size(); i++) {
+
+		tmpFileName = fileNames.at(i);
+
+		slashPos = tmpFileName.find("_");
+		dotPos = tmpFileName.find(".");
+		tmpTime = tmpFileName.substr(0, (slashPos));
+		tmpIdx = tmpFileName.substr(slashPos + 1, (dotPos - slashPos - 1));
+
+		mFileName.time = atoi(tmpTime.c_str());
+		mFileName.idx = atoi(tmpIdx.c_str());
+		mFileName.flag = mFileName.time * 31 + mFileName.idx;
+		cout << mFileName.idx << endl << mFileName.time << endl;
+		fileNameStructs.push_back(mFileName);
+		mFileName.time = -1;
+		mFileName.idx = -1;
+	}
+
+	//Sorting
+	for (int i = 0; i < fileNameStructs.size() - 1; i++) {
+		for (int j = 0; j < fileNameStructs.size() - i - 1; j++) {
+			if (fileNameStructs.at(j).flag > fileNameStructs.at(j + 1).flag) {
+				mFileName = fileNameStructs.at(j + 1);
+				fileNameStructs.at(j + 1) = fileNameStructs.at(j);
+				fileNameStructs.at(j) = mFileName;
+
+				tmpFileName = fileNames.at(j + 1);
+				fileNames.at(j + 1) = fileNames.at(j);
+				fileNames.at(j) = tmpFileName;
+
+			}
+		}
+	}
+
+	//processing pixels;
+	ifstream colorDataIn;
+	ifstream depthDataIn;
+	ifstream bodyIndexDataIn;
+	ifstream bodyDataIn;
+
+	BYTE * yuy2DataArray = nullptr;
+	BYTE *rgbDataArray = nullptr;
+
+	UINT16 * depthFrameArray_rawDepth = nullptr;
+	BYTE * depthFrameArray_BGR = nullptr;
+
+	BYTE * bodyIndexFrameArray_rawBodyIndex = nullptr;
+	BYTE * bodyIndexFrameArray_BGR = nullptr;
+
+	UINT size_depthFrameArray_rawDepth = 512 * 424;
+	UINT size_depthFrameArray_BGR = 512 * 424 * 3;
+
+
+	rgbDataArray = new BYTE[rgbArraySize];
+	yuy2DataArray = new BYTE[yuy2ArraySize];
+
+	depthFrameArray_rawDepth = new UINT16[size_depthFrameArray_rawDepth];
+	depthFrameArray_BGR = new BYTE[size_depthFrameArray_BGR];
+
+	bodyIndexFrameArray_rawBodyIndex = new BYTE[size_depthFrameArray_rawDepth];
+	bodyIndexFrameArray_BGR = new BYTE[size_depthFrameArray_BGR];
+
+
+
+	memset(yuy2DataArray, 0, yuy2ArraySize);
+	memset(rgbDataArray, 0, rgbArraySize);
+
+	memset(depthFrameArray_rawDepth, 0, size_depthFrameArray_rawDepth);
+	memset(depthFrameArray_BGR, 0, size_depthFrameArray_BGR);
+
+	memset(bodyIndexFrameArray_rawBodyIndex, 0, size_depthFrameArray_rawDepth);
+	memset(bodyIndexFrameArray_BGR, 0, size_depthFrameArray_BGR);
+
+	float skeletonJoints[9 * JointType_Count] = { 0 };
+	int skeletonSize = sizeof(skeletonJoints);
+	float bodyFrameRead[225];
+
+	memset(bodyFrameRead, 0, 225);
+	CvPoint jointPoints[JointType_Count] = { cvPoint(-1, -1) };
+	int fourcc = -1;
+	Size colorFrameSize(1920, 1080);
+	Size depthFrameSize(512, 424);
+
+	namedWindow("color image", CV_WINDOW_AUTOSIZE);
+	namedWindow("depth image", CV_WINDOW_AUTOSIZE);
+	namedWindow("bodyIndex image", CV_WINDOW_AUTOSIZE);
+	namedWindow("body image", CV_WINDOW_AUTOSIZE);
+
+	Mat colorFrameMat;
+	Mat depthFrameMat;
+	Mat bodyIndexFrameMat;
+	Mat bodyFrameMat;
+
+	string colorVideoPath = dirPath + "colorVideo.avi";
+	string depthVideoPath = dirPath + "depthVideo.avi";
+	string bodyIndexVideoPath = dirPath + "bodyIndexVideo.avi";
+	string bodyVideoPath = dirPath + "bodyVideo.avi";
+
+	VideoWriter colorVideoWriter(colorVideoPath.c_str(), fourcc, 28, colorFrameSize, true);
+	VideoWriter depthVideoWriter(depthVideoPath.c_str(), fourcc, 28, depthFrameSize, true);
+	VideoWriter bodyIndexVideoWriter(bodyIndexVideoPath.c_str(), fourcc, 28, depthFrameSize, true);
+	VideoWriter bodyVideoWriter(bodyVideoPath.c_str(), fourcc, 28, depthFrameSize, true);
+
+	
+	if (!colorVideoWriter.isOpened() || !depthVideoWriter.isOpened() || !bodyIndexVideoWriter.isOpened() || !bodyVideoWriter.isOpened()) {
+		cout << "!!! Output video could not be opened" << std::endl;
+		return -1;
+	}
+
+
+	for (int i = 0; i < fileNames.size(); i++) {
+		cout << dirPath + "\\color\\" + fileNames.at(i) << endl;
+
+		colorDataIn.open((dirPath + "\\color\\" + fileNames.at(i)).c_str(), ios_base::in | ios_base::binary);
+		colorDataIn.read(reinterpret_cast<char*> (yuy2DataArray), sizeof(BYTE) * yuy2ArraySize);
+
+		depthDataIn.open((dirPath + "\\depth\\" + fileNames.at(i)).c_str(), ios_base::in | ios_base::binary);
+		depthDataIn.read(reinterpret_cast<char*> (depthFrameArray_rawDepth), sizeof(UINT16) * size_depthFrameArray_rawDepth);
+
+		bodyIndexDataIn.open((dirPath + "\\bodyIndex\\" + fileNames.at(i)).c_str(), ios_base::in | ios_base::binary);
+		bodyIndexDataIn.read(reinterpret_cast<char*> (bodyIndexFrameArray_rawBodyIndex), sizeof(BYTE) * size_depthFrameArray_rawDepth);
+
+		bodyDataIn.open((dirPath + "\\body\\" + fileNames.at(i)).c_str(), ios_base::in | ios_base::binary);
+		bodyDataIn.read(reinterpret_cast<char*>(bodyFrameRead), skeletonSize);
+
+		//Processing color frame
+		convertingYUYV2RGB(yuy2DataArray, rgbDataArray);
+		colorFrameMat = Mat(1080, 1920, CV_8UC3, rgbDataArray);
+
+		//Processing depth frame
+		for (int i = 0; i < size_depthFrameArray_rawDepth; i++) {
+			USHORT depth = depthFrameArray_rawDepth[i];
+
+			if (depth < 0) {
+				depthFrameArray_BGR[i * 3] = 0xFF;
+				depthFrameArray_BGR[i * 3 + 1] = 0;
+				depthFrameArray_BGR[i * 3 + 2] = 0;
+			}
+
+			else {
+				memset(depthFrameArray_BGR + 3 * i, (depth & 0xFF), 3);
+			}
+		}
+		depthFrameMat = Mat(424, 512, CV_8UC3, depthFrameArray_BGR);
+
+		//processing body index frame
+		for (UINT i = 0; i < size_depthFrameArray_rawDepth; i++) {
+			bodyIndexFrameArray_BGR[i * 3] = bodyIndexFrameArray_rawBodyIndex[i] & 0x01 ? 0x00 : 0xFF;
+			bodyIndexFrameArray_BGR[i * 3 + 1] = bodyIndexFrameArray_rawBodyIndex[i] & 0x02 ? 0x00 : 0xFF;
+			bodyIndexFrameArray_BGR[i * 3 + 2] = bodyIndexFrameArray_rawBodyIndex[i] & 0x04 ? 0x00 : 0xFF;
+		}
+		bodyIndexFrameMat = Mat(424, 512, CV_8UC3, bodyIndexFrameArray_BGR);
+
+
+		//Processing body Frame
+		for (int i = 0; i < JointType_Count; i++) {
+			jointPoints[i].x = bodyFrameRead[i * 9 + 7];
+			jointPoints[i].y = bodyFrameRead[i * 9 + 8];
+		}
+		bodyFrameMat = Mat::zeros(424, 512, CV_8UC3);
+		bodyFrameMat = drawAperson(jointPoints, skeletonColor, 7, bodyFrameMat);
+
+
+
+		imshow("color image", colorFrameMat);
+		imshow("depth image", depthFrameMat);
+		imshow("bodyIndex image", bodyIndexFrameMat);
+		imshow("body image", bodyFrameMat);
+
+		colorVideoWriter.write(colorFrameMat);
+		depthVideoWriter.write(depthFrameMat);
+		bodyIndexVideoWriter.write(bodyIndexFrameMat);
+		bodyVideoWriter.write(bodyFrameMat);
+
+		waitKey(1);
+		
+		colorDataIn.close();
+		depthDataIn.close();
+		bodyIndexDataIn.close();
+		bodyDataIn.close();
+
+		memset(rgbDataArray, 0, rgbArraySize);
+		memset(yuy2DataArray, 10, yuy2ArraySize);
+
+		memset(depthFrameArray_rawDepth, 0, size_depthFrameArray_rawDepth);
+		memset(depthFrameArray_BGR, 0, size_depthFrameArray_BGR);
+
+		memset(depthFrameArray_rawDepth, 0, size_depthFrameArray_rawDepth);
+		memset(bodyIndexFrameArray_BGR, 0, size_depthFrameArray_BGR);
+
+		memset(bodyFrameRead, 0, skeletonSize);
+		memset(jointPoints, 0, 25);
+
+	}
+	colorVideoWriter.release();
+	depthVideoWriter.release();
+	bodyVideoWriter.release();
+	bodyIndexVideoWriter.release();
+
+	cvDestroyWindow("color image");
+	cvDestroyWindow("depth image");
+	cvDestroyWindow("boydIndex image");
+	cvDestroyWindow("body image");
+
+	string colorPathNew = dirPath + "color.mp4";
+	rename(colorVideoPath.c_str(), colorPathNew.c_str());
+
+	colorPathNew = dirPath + "depth.mp4";
+	rename(depthVideoPath.c_str(), colorPathNew.c_str());
+
+	colorPathNew = dirPath + "bodyIndex.mp4";
+	rename(bodyIndexVideoPath.c_str(), colorPathNew.c_str());
+	colorPathNew = dirPath + "body.mp4";
+	rename(bodyVideoPath.c_str(), colorPathNew.c_str());
+
 }
